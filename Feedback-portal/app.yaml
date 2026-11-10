@@ -1,0 +1,82 @@
+# All infrastructure inputs are defined here. Terraform contains only the
+# resource implementation and does not contain application source code.
+project_id: "replace-with-gcp-project-id"
+region: "europe-west1"
+zone: "europe-west1-b"
+
+network:
+  name: "small-web-vpc"
+
+subnet:
+  name: "small-web-subnet"
+  cidr: "10.20.0.0/24"
+  private_ip_google_access: true
+
+firewall_rules:
+  - name: "small-web-allow-health-checks"
+    direction: "INGRESS"
+    priority: 1000
+    source_ranges:
+      - "35.191.0.0/16"
+      - "130.211.0.0/22"
+    target_tags:
+      - "small-web"
+    allow:
+      - protocol: "tcp"
+        ports: ["80"]
+
+  - name: "small-web-allow-ssh"
+    direction: "INGRESS"
+    priority: 1100
+    source_ranges:
+      - "203.0.113.10/32" # Replace with an approved administrative CIDR.
+    target_tags:
+      - "small-web"
+    allow:
+      - protocol: "tcp"
+        ports: ["22"]
+
+instance_template:
+  name: "small-web"
+  machine_type: "e2-small"
+  public_ip: false
+  tags:
+    - "small-web"
+  boot_disk:
+    image: "projects/debian-cloud/global/images/family/debian-12"
+    size_gb: 20
+    type: "pd-balanced"
+  service_account:
+    email: "default"
+    scopes:
+      - "https://www.googleapis.com/auth/cloud-platform"
+  metadata: {}
+
+instance_group:
+  name: "small-web-mig"
+  base_instance_name: "small-web"
+  zones:
+    - "europe-west1-b"
+    - "europe-west1-c"
+  target_size: 2
+  named_port:
+    name: "http"
+    port: 80
+  auto_healing_initial_delay_sec: 120
+
+health_check:
+  name: "small-web-health"
+  check_interval_sec: 10
+  timeout_sec: 5
+  healthy_threshold: 2
+  unhealthy_threshold: 3
+  http:
+    port: 80
+    request_path: "/"
+
+autoscaler:
+  name: "small-web-autoscaler"
+  min_replicas: 2
+  max_replicas: 4
+  cooldown_period: 60
+  cpu_target: 0.60
